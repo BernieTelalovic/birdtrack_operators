@@ -6,10 +6,11 @@ import numpy as np
 import copy as cp
 import fractions as fr
 import tableau_utils as tu
+import math
 
 class BirdtrackOperator():
     
-    def __init__(self, ops, prefactor = 1, prefactor_str = '', order = 'r->l', normalised = True):
+    def __init__(self, ops, prefactor = 1, prefactor_str = '', order = 'r->l', normalise = True):
         
         self.domain = list(set(sum([op.get_total_domain() for op in ops if len(ops) > 0], [])))
         
@@ -19,24 +20,31 @@ class BirdtrackOperator():
         self.prefactor = fr.Fraction(prefactor)
         self.prefactor_str = prefactor_str
         self.normalised = False
-        self.idempotent = False
-        if normalised:
+        self.idempotent = None
+        self.collapsed = None
+        if normalise:
             self.idempotent = self.is_idempotent()
             if self.idempotent:
-                if normalised:
+                if normalise:
                     self.normalise()
                 else:
                     self.normalised = False
+
+        
         
     def is_idempotent(self):
         
         idem = False
-        
-        self_cp = cp.deepcopy(self)
-        
-        collapsed = self_cp.collapse()
-        if collapsed.is_idempotent():
-            idem = True
+        if self.collapsed:
+            if self.collapsed.is_idempotent():
+                idem = True
+        else:
+            self_cp = cp.deepcopy(self)
+            
+            collapsed = self_cp.collapse()
+            self.collapsed = collapsed
+            if collapsed.is_idempotent():
+                idem = True
             
         return idem
     
@@ -70,6 +78,11 @@ class BirdtrackOperator():
             return self.operator_seq
         elif prpty is 'order':
             return self.order
+
+
+    def symmetriser_lengths(self):
+        lis = [math.factorial(len(op.domain)) for op in self.operator_seq]
+        return np.product(lis)
         
     
         
@@ -77,6 +90,10 @@ class BirdtrackOperator():
         
         norm_fac = None
         normalised = cp.deepcopy(self)
+        sym_fac = 1
+
+        if self.operator_seq[0].operator.normalised is False:
+            sym_fac = self.symmetriser_lengths()
         
         if self.is_idempotent():
             if (not normalised.is_normalised()):
@@ -84,10 +101,9 @@ class BirdtrackOperator():
                 self_cp = cp.deepcopy(self)
 
                 norm_fac = self_cp.collapse().get_normalisation_factor()
-                if norm_fac:
+                if not norm_fac is None:
                     self.set_normalised(True)
-                    #self.operator_seq = self_cp.multiply_by_constant(fr.Fraction(1))
-                    self.set_prefactor(norm_fac)
+                    self.set_prefactor(norm_fac*sym_fac)
                     if verbose:
                         print('Operator has been normalised.')
                 elif verbose:
@@ -123,7 +139,7 @@ class BirdtrackOperator():
         prefactor = self.prefactor
         
         collapsed = cp.deepcopy(op_seq[0]).multiply_by_constant(prefactor)
-        order = self.order
+
         for ind in range(len(op_seq)):
             
             if ind > 0:
