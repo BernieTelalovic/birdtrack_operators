@@ -360,7 +360,7 @@ class Tableau(Diagram):
         return mold
     
     
-    def as_mold_operator(self, normalised = True):
+    def as_mold_operator(self, normalise = True):
         
         tableau = {'rows': [row for row in self.list_of_rows() if len(row) > 1], 
                    'columns': [col for col in self.list_of_columns() if len(col) > 1]}
@@ -478,6 +478,6 @@ class Tableau(Diagram):
         prefac = self.prefactor
         prefac_str = self.prefactor_str
         
-        mold_op = BirdtrackOperator(mold, prefactor = prefac, prefactor_str = prefac_str, normalised = normalised)
+        mold_op = BirdtrackOperator(mold, prefactor = prefac, prefactor_str = prefac_str, normalise = normalise)
             
         return mold_op

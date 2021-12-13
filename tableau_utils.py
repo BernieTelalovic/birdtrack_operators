@@ -1,5 +1,5 @@
-#import sympy as sp
-#import gravipy as gp
+import sympy as sp
+import gravipy as gp
 import numpy as np
 import itertools
 import yaml
@@ -36,7 +36,7 @@ def num_elements_in_conjugacy_class(partition, N):
     
     else:
         num_elements = None
-        print('The partition numbers exceed the group N; returning None')
+        print('The partition numbers exceed the group n; returning None')
     return num_elements
 
 def cycle_convert(perm):

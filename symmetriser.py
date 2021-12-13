@@ -1,5 +1,5 @@
-#import sympy as sp
-#import gravipy as gp
+import sympy as sp
+import gravipy as gp
 import numpy as np
 import itertools
 import tableau_utils as tu
@@ -9,7 +9,7 @@ from cycle_sum import CycleSum
 
 class Symmetriser(CycleSum):
 
-    def __init__(self, num_list, antisym = False, normalise = False):
+    def __init__(self, num_list, antisym = False, mix = False, normalise = False):
 
         perms = list(itertools.permutations(num_list))
         self.domain = num_list
@@ -32,10 +32,23 @@ class Symmetriser(CycleSum):
             del_i = int((-1)**(odd*perm_order))
             prefactors.append(del_i)
             operator.append(op)
+
+        self.mix = mix
+        sums = None
+        if mix:
+            sym = Symmetriser(num_list, normalise = normalise)
+            antisym = Symmetriser(num_list, antisym = True, normalise = normalise)
+            sums = sym.sum_with(antisym)
             
 
         self.operator = CycleSum(operator, prefactors, normalise = False)
+        if mix:
+            self.operator = sums
 
+        self.cycle_sum = self.operator.cycle_sum
+
+        self.cycle_list = self.operator.cycle_list
+        self.prefactors = self.operator.prefactors
         self.antisym = antisym
         
         if normalise:
@@ -45,13 +58,13 @@ class Symmetriser(CycleSum):
         
     def get_total_domain(self):
         
-        return self.operator.get_total_domain()
+        return self.domain
         
         
     def get(self, prpty):
         
         if prpty is 'domain':
-            return self.get_total_domain()
+            return self.domain
         else: 
             return self.operator.get(prpty)
         
@@ -93,17 +106,30 @@ class Symmetriser(CycleSum):
         
         self.operator = self.operator.reverse()
         return self
+
         
+    def multiply_by_constant(self, const):
+
+        self.prefactors = [pref*const for pref in self.prefactors]
+
+        return self
+
 
     def normalise(self):
     
+        new_op = self
         if not self.is_normalised():
+
+            pref = 1
+            if self.mix:
+                pref = 2
             
             n = len(self.domain)
-            self.operator = self.operator.multiply_by_constant(fr.Fraction(1,np.prod(range(1, n+1))))
+            new_op = self.operator.multiply_by_constant(fr.Fraction(pref,np.prod(range(1, n+1))))
         
-            self.set_normalised(True)
-    
+            new_op.set_normalised(True)
+
+        return new_op
 
     
     def act_on(self, op):

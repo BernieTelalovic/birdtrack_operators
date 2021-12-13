@@ -10,7 +10,7 @@ import math
 
 class BirdtrackOperator():
     
-    def __init__(self, ops, prefactor = 1, prefactor_str = '', order = 'r->l', normalise = True):
+    def __init__(self, ops, prefactor = 1, prefactor_str = '', order = 'r->l', normalise = True,):
         
         self.domain = list(set(sum([op.get_total_domain() for op in ops if len(ops) > 0], [])))
         
@@ -29,6 +29,180 @@ class BirdtrackOperator():
                     self.normalise()
                 else:
                     self.normalised = False
+
+
+    def indices_seperate_by_domain(self):
+
+        op_lis = self.operator_seq
+        lis_domains = [op.get('domain') for op in op_lis]
+        
+        seperated_ops_inds = []
+        total_domain = []
+        app_inds = []
+        for ind in range(len(op_lis)):
+            appended = True
+
+            if len(list(set(total_domain) & set(lis_domains[ind]))) == 0:
+                app_inds.append(ind)
+                total_domain = list(set(total_domain+lis_domains[ind]))
+            else:
+                total_domain = lis_domains[ind]
+                seperated_ops_inds.append(app_inds)
+                app_inds = [ind]
+
+            if ind == len(op_lis)-1:
+                total_domain = []
+                seperated_ops_inds.append(app_inds)
+                app_inds = []
+                
+        return seperated_ops_inds
+
+
+    def transitions_to(self, op):
+
+        op_seperate_indices = op.indices_seperate_by_domain()
+        self_seperate_indices = self.indices_seperate_by_domain()
+
+        immediately_zero = False
+        self_right_most_ops = [[self.operator_seq[ind].domain, self.operator_seq[ind].antisym] 
+                                for ind in self_seperate_indices[-1]]
+        op_left_most_ops = [[op.operator_seq[ind].domain, op.operator_seq[ind].antisym] 
+                                for ind in op_seperate_indices[0]]
+        #print(self_right_most_ops)
+        #print(op_left_most_ops)
+
+        for slfop in self_right_most_ops:
+
+            slf_dom = slfop[0]
+
+            for opop in op_left_most_ops:
+                    
+                if not (slfop[1] is opop[1]):
+                        
+                    op_dom = opop[0]
+                    
+                    if len(list(set(slf_dom) & set(op_dom))) > 1:
+                        immediately_zero = True
+                        #print('immediately zero')
+
+
+        op_mid_ind = int(len(op_seperate_indices)/2)
+
+        self_mid_ind = int(len(self_seperate_indices)/2)
+        self_start_ind = 0
+        if len(self_seperate_indices)/2 > 2.5:
+            self_start_ind = min(self_seperate_indices[self_mid_ind+2])
+
+        self_side_ops_types = [self.operator_seq[ind].antisym for ind in self_seperate_indices[min([self_mid_ind+1, len(self_seperate_indices)-1])]]
+        self_side_typ = max(set(self_side_ops_types), key = self_side_ops_types.count)
+        #print(self_side_typ)
+        
+        op_side_ops_types = [op.operator_seq[ind].antisym for ind in op_seperate_indices[op_mid_ind-1]]
+        #print('op off-doms', [op.operator_seq[ind].domain for ind in op_seperate_indices[op_mid_ind-1]])
+        op_side_typ = max(set(op_side_ops_types), key = op_side_ops_types.count)
+        #print(op_side_typ)
+        
+        min_ind = 0
+        if not (op_side_typ is self_side_typ):
+            min_ind = 1
+
+        op_start_ind = 0
+        if len(op_seperate_indices)/2 > 2.5:
+            #print('here!')
+            op_start_ind = max(min(op_seperate_indices[op_mid_ind-min_ind]),1)
+            #print(op_start_ind)
+
+        self_right_ops = self
+        if len(self_seperate_indices)/2 > 2.5:
+            self_ops = self.operator_seq[self_start_ind:]
+            #print([op.domain for op in self_ops])
+            self_right_ops = BirdtrackOperator(self_ops, normalise = False)
+
+        op_left_ops = op
+        if len(op_seperate_indices)/2 > 2.5:
+            op_ops = op.operator_seq[:op_start_ind]
+            #print([op.domain for op in op_ops])
+            op_left_ops = BirdtrackOperator(op_ops, normalise = False)
+
+        collapsed_mid = self_right_ops.deepact_on(op_left_ops)
+
+        cyc_lists = collapsed_mid.get('cycle')
+        cyc_prefs = collapsed_mid.get('prefactor')
+        
+        leftover_ops = self.operator_seq[:self_mid_ind+1]# + op.operator_seq[op_mid_ind-min_ind+1:]
+        
+        self_op = [[self.operator_seq[ind].domain, self.operator_seq[ind].antisym] 
+                   for ind in self_seperate_indices[min([self_mid_ind+1, len(self_seperate_indices)-1])]]
+        self_op_total_dom = []
+        for p in self_op:
+            self_op_total_dom += p[0]
+        self_op_total_dom = list(set(self_op_total_dom))
+
+        self_mid_op = [[self.operator_seq[ind].domain, self.operator_seq[ind].antisym] 
+                   for ind in self_seperate_indices[self_mid_ind]]
+
+        self_mid_op = [ent for ent in self_mid_op if len(list(set(ent[0]) & set(self_op_total_dom))) <= 1]
+
+        op_op = [[op.operator_seq[ind].domain, op.operator_seq[ind].antisym]
+                 for ind in op_seperate_indices[op_mid_ind-min_ind]]
+        op_op_total_dom = []
+        for p in op_op:
+            op_op_total_dom += p[0]
+        op_op_total_dom = list(set(op_op_total_dom))
+
+        op_side_op = [[op.operator_seq[ind].domain, op.operator_seq[ind].antisym]
+                 for ind in op_seperate_indices[op_mid_ind-min_ind+1]]
+
+        op_side_op = [ent for ent in op_side_op if len(list(set(ent[0]) & set(op_op_total_dom))) <= 1]
+
+
+        #self_left_most_op = [[self.operator_seq[ind].domain, self.operator_seq[ind].antisym] 
+        #           for ind in self_seperate_indices[self_mid_ind]]
+        #print('left left op', self_mid_op)
+        #print('left op', self_op)
+        #op_right_most_op = [[op.operator_seq[ind].domain, op.operator_seq[ind].antisym]
+        #         for ind in op_seperate_indices[op_mid_ind-min_ind+2]]
+        #print('right op', op_op)
+        #print('right op', op_side_op)
+
+        total_prefs = []
+
+        if not immediately_zero:
+
+            for ind in range(len(cyc_lists)):
+                
+                pref = cyc_prefs[ind]
+                
+                
+                for slfop in self_op+self_mid_op:
+
+                    slf_dom = slfop[0]
+                    cyc = cyc_lists[ind].reverse()
+                    expanded_cyc_dom = sorted(list(set(cyc.get('domain')+slf_dom)))
+                    cyc.expand_domain(expanded_cyc_dom)
+                            
+                    slf_dom_cycled = []
+
+                    for opop in op_op:
+                        
+                        if not (slfop[1] is opop[1]):
+                            
+                            op_dom = opop[0]
+                            
+                            for p in slf_dom:
+                                ind = cyc.cycle['domain'].index(p)
+                                slf_dom_cycled.append(cyc.cycle['image'][ind])
+                            
+                            if len(list(set(slf_dom_cycled) & set(op_dom))) > 1:
+                                pref = None
+
+                            
+                if not pref is None:
+                    total_prefs.append(pref)
+                    
+        return total_prefs
+
+
 
         
         

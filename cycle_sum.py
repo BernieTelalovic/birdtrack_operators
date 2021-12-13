@@ -1,5 +1,5 @@
-#import sympy as sp
-#import gravipy as gp
+import sympy as sp
+import gravipy as gp
 import numpy as np
 import itertools
 from cycle import Cycle
@@ -30,11 +30,36 @@ class CycleSum():
                 prefacs.append(1)
                 
         self.cycle_sum = cyc_lis
+        self.cycle_list = cycle_list
         if normalise:
-            self.cycle_sum = self.normalise().get_sum()
+            normalised = self.normalise()
+            prefacs = normalised.prefactors
+            self.cycle_sum = normalised.get_sum()
         
         self.prefactors = prefacs
         
+        
+    def CycleSumFromStr(cyc_str):
+        
+        cyc_str = cyc_str.replace('+', '`+')
+        cyc_str = cyc_str.replace('-', '`-')
+        cyc_strlis = cyc_str.split('`')
+        start = '('
+        end = ')'
+        prefs = []
+        cycles = []
+
+        for s in cyc_strlis:
+            if len(s) > 0:
+                cyc = '('+ s[s.find(start)+len(start):s.rfind(end)] + ')'
+                pref = s.split(cyc)[0]
+                if cyc in '()':
+                    cyc = ''
+                cycles.append(Cycle(cyc))
+                prefs.append(pref)
+        cycsum = CycleSum(cycles, prefactors = prefs)
+        
+        return cycsum
         
     def is_normalised(self):
         
@@ -79,17 +104,25 @@ class CycleSum():
     
     def get_overall_factor(self):
         
-        overall_fac = 0
+        overall_fac = None
         
         prefs = self.get('prefactor')
         denoms = [pref.denominator for pref in prefs]
-        numers = [pref.numerator for pref in prefs]  
+        numers = []
+        denom_fac = None
+        numer_fac = None
+        if len(denoms) > 0:
+            denom_lcm = np.lcm.reduce(denoms)
+           # print(denom_lcm)
+            numers = [int(prefs[ind].numerator*(denom_lcm/prefs[ind].denominator)) for ind in range(len(prefs))]
+           # print(numers)
+           # print(denoms)
+           # print()
         
-        if (len(denoms) > 0) and (len(numers) > 0):
-            denom_fac = np.gcd.reduce(denoms)
+        if len(numers) > 0:
             numer_fac = np.gcd.reduce(numers)
-
-            overall_fac = fr.Fraction(str(numer_fac/denom_fac))     
+            denom_fac = denom_lcm
+            overall_fac = fr.Fraction(numer_fac,denom_lcm)
             
         return overall_fac
         
@@ -109,9 +142,24 @@ class CycleSum():
     def set_normalised(self, val):
         
         self.normalised = val
-    
-    
+
+
     def sum_with(self, cycles, factor = 1):
+
+        cycles_fac = cycles.multiply_by_constant(factor)
+
+        all_cycs = self.cycle_sum + cycles_fac.cycle_sum
+
+        cy = CycleSum([Cycle()])
+        cy.set_cycle_sum(all_cycs)
+
+        sums = cy.simplify()
+
+        return sums
+
+            
+    
+    def sum_with_depricated(self, cycles, factor = 1):
         
         added = cp.deepcopy(self).get('cycle')
         prefactors = cp.deepcopy(self).get('prefactor')
@@ -182,7 +230,12 @@ class CycleSum():
 
                 norm_fac = fr.Fraction(1,1)
 
+
+
                 if len(self.cycle_sum) > 0:
+
+                    #norm_fac = self.get_overall_factor()/squared.get_overall_factor()
+
                     first_term = self.cycle_sum[0]['cycle']
                     first_pref = self.cycle_sum[0]['prefactor']
                     sq_pref = None
@@ -203,6 +256,9 @@ class CycleSum():
             norm_fac = fr.Fraction(1,1)
 
             if len(self.cycle_sum) > 0:
+
+                #norm_fac = self.get_overall_factor()/squared.get_overall_factor()
+
                 first_term = self.cycle_sum[0]['cycle']
                 first_pref = self.cycle_sum[0]['prefactor']
                 sq_pref = None
@@ -244,21 +300,49 @@ class CycleSum():
         cyc_sum = cycsum
         slf = cp.deepcopy(self)
 
-        if up_to_factor:
-            pref_slf = slf.get_identity_factor()
-            pref_cyc = cyc_sum.get_identity_factor()
-            slf = slf.multiply_by_constant(pref_cyc)
-            cyc_sum = cyc_sum.multiply_by_constant(pref_slf)
+        if (not self.write_as_cycles() in '0') and (not cycsum.write_as_cycles() in '0'):
+            pref_slf = 1
+            pref_cyc = 1
+            if up_to_factor:
+                pref_slf = slf.get_identity_factor()
+                pref_cyc = cyc_sum.get_identity_factor()
+                #slf = slf.multiply_by_constant(pref_cyc)
+                #cyc_sum = cyc_sum.multiply_by_constant(pref_slf)
+                
+
+            summed = slf.sum_with(cyc_sum, factor = -fr.Fraction(pref_slf,pref_cyc))
+            #print(summed.write_as_cycles())
             
-        summed = slf.sum_with(cyc_sum, factor = -1)
-        
-        if summed.write_as_cycles() in '0':
-            equiv = True
+            if summed.write_as_cycles() in '0':
+                equiv = True
         
         return equiv
-    
-    
+
+
     def simplify(self):
+
+        apps = self.cycle_sum
+        dic_lis = [cyc.update(cyc['cycle'].cycle) for cyc in apps]
+
+        imgs = [apps[ind]['image'] for ind in range(len(apps))]
+
+        k = sorted(imgs)
+        imgs = list(k for k, _ in itertools.groupby(k))
+        doms = [sorted(lis) for lis in imgs]
+
+        prefs = [sum([apps[ind]['prefactor'] for ind in range(len(apps)) if apps[ind]['image'] == img]) for img in imgs]
+
+        cycs = [Cycle(domain = doms[ind], image = imgs[ind]) 
+                for ind in range(len(imgs)) if prefs[ind].numerator != 0]
+        
+        prefs = [pref for pref in prefs if pref.numerator != 0]
+
+        new_sum = CycleSum(cycs, prefactors = prefs)
+
+        return new_sum
+    
+    
+    def simplify_depricated(self):
     
         simplified = []
         prefactors = []
@@ -282,6 +366,7 @@ class CycleSum():
                 if (op.get('domain') == sim.get('domain')) and (op.get('image') == sim.get('image')):
 
                     if str(float(prefactors[sim_ind]) + float(pref)) in '0.0000000000000000000000000000000000000000':
+                    #if str(prefactors[sim_ind]/pref) in '-1.0':
                         prefactors[sim_ind] = fr.Fraction(0,1)
                     else:
                         prefactors[sim_ind] = fr.Fraction(str(prefactors[sim_ind])) + fr.Fraction(str(pref))
@@ -290,9 +375,18 @@ class CycleSum():
                     
                 elif (len(op.get('domain')) == 0) and (len(sim.get('domain')) == 0):
                     if str(float(prefactors[sim_ind]) + float(pref)) in '0.0000000000000000000000000000000000000000':
+                    #if str(prefactors[sim_ind]/pref) in '-1.0':
                         prefactors[sim_ind] = fr.Fraction(0,1)
                     else:
                         prefactors[sim_ind] = fr.Fraction(str(prefactors[sim_ind])) + fr.Fraction(str(pref))
+                    appended = True
+                    
+                elif op.as_str() == sim.as_str():
+                    if str(prefactors[sim_ind]/pref) in '-1.0':
+                        prefactors[sim_ind] = fr.Fraction(0,1)
+                    else:
+                        prefactors[sim_ind] = fr.Fraction(str(prefactors[sim_ind])) + fr.Fraction(str(pref))
+
                     appended = True
 
             if not appended:
@@ -325,6 +419,38 @@ class CycleSum():
                 prefac2_str = op2[op2_ind]['prefactor_str']
                 cycle = op1[op1_ind]['cycle'].act_on(op2[op2_ind]['cycle'])
 
+                #op = Cycle()
+                prefactors.append(fr.Fraction(str(prefac1*prefac2)))
+                prefacs_str.append('('+prefac1_str+')' + r"\times" + '('+prefac2_str+')')
+                #op.set_cycle({'image': cycle.get('image'), 'domain': cycle.get('domain')})
+
+                final_ops.append(cycle)
+                
+        cycle_list = CycleSum(final_ops, prefactors = prefactors, str_prefactors = prefacs_str)
+
+        return cycle_list.simplify()
+
+
+    def act_on_depricated(self, operator):
+        
+        op1 = self.cycle_sum.copy()
+        op2 = operator.get_sum().copy()
+    
+        final_ops = []
+        prefactors = []
+        prefacs_str = []
+
+        for op1_ind in range(len(op1)):
+
+            prefac1 = op1[op1_ind]['prefactor']
+            prefac1_str = op1[op1_ind]['prefactor_str']
+
+            for op2_ind in range(len(op2)):
+
+                prefac2 = op2[op2_ind]['prefactor']
+                prefac2_str = op2[op2_ind]['prefactor_str']
+                cycle = op1[op1_ind]['cycle'].act_on(op2[op2_ind]['cycle'])
+
                 op = Cycle()
                 prefactors.append(fr.Fraction(str(prefac1*prefac2)))
                 prefacs_str.append('('+prefac1_str+')' + r"\times" + '('+prefac2_str+')')
@@ -334,7 +460,7 @@ class CycleSum():
                 
         cycle_list = CycleSum(final_ops, prefactors = prefactors, str_prefactors = prefacs_str)
 
-        return cycle_list.simplify()
+        return cycle_list.simplify_depricated()
     
     
     
@@ -411,13 +537,19 @@ class CycleSum():
 
     def write_as_cycles(self):
         
-        ops = self.cycle_sum
+        ops = self.cycle_list
+        pref = self.prefactors
+
+        ops = self.get('cycle')
+        pref = self.get('prefactor')
 
         cycles = ''
-        for op in ops:
+        #for op in ops:
+        for ind in range(len(ops)):
+
             prefac_str = ''
-            prefac = op['prefactor']
-            prefac_string = op['prefactor_str']
+            prefac = pref[ind]#op['prefactor']
+            #prefac_string = op['prefactor_str']
             if prefac > 0:
                 if prefac is 1:
                     prefac_str = '+'
@@ -431,7 +563,7 @@ class CycleSum():
                     prefac_str = str(prefac)
 
             if prefac != 0:
-                cycles += prefac_str + op['cycle'].as_str()
+                cycles += prefac_str + ops[ind].as_str()#op['cycle'].as_str()
                 
         if len(cycles) == 0:
             cycles = '0'

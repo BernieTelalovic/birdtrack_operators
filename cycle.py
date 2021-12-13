@@ -1,16 +1,23 @@
-#import sympy as sp
-#import gravipy as gp
+import sympy as sp
+import gravipy as gp
 import numpy as np
 import itertools
 
 class Cycle():
     
-    def __init__(self, cyc = ''):
-        
+    def __init__(self, cyc = '', domain = None, image = None):
+
         cyc = cyc.replace(',', ' ').replace(') (', ')(')
         cycles_dict = []
         final_cycle = None
-        if len(cyc) > 0:
+
+        if (not domain is None) and (not image is None):
+
+            if len(domain) == len(image):
+                final_cycle = {'domain': domain, 'image': image}
+
+        
+        elif len(cyc) > 0:
 
             cycle_cut = cyc[1:-1]
             cycles_str = [[int(c) for c in cy.split(' ')] for cy in cycle_cut.split(')(')]
@@ -51,8 +58,19 @@ class Cycle():
                 
         else:
             final_cycle = {'domain': [], 'image': []}
+
+
+        list1 = final_cycle['image']
+        list2 = final_cycle['domain']
+
+        zipped_lists = zip(list2, list1)
+
+        sorted_zipped_lists = sorted(zipped_lists)
+
+        image = [element for _, element in sorted_zipped_lists]
+        domain = [element for element, _ in sorted_zipped_lists]
             
-        self.cycle = final_cycle
+        self.cycle = {'domain': domain, 'image': image}
         
         
     def get(self, prpty):
@@ -68,6 +86,13 @@ class Cycle():
     def set_cycle(self, cycle):
         
         self.cycle = cycle
+
+    def return_set_cycle(self, cyc):
+
+        cyc = Cycle()
+        cyc.set_cycle(cyc)
+
+        return cyc
         
         
     def trace(self, N = 1, num_lines = None):
@@ -98,6 +123,42 @@ class Cycle():
                 nums_in_cycle.append(img)
                 
         return N**(tr+extra_lines)
+
+
+    def expand_domain(self, dom):
+    
+        image = []
+        img = self.cycle['image']
+        for d in dom:
+
+            if d in self.cycle['domain']:
+                image.append(img[self.cycle['domain'].index(d)])
+            else:
+                image.append(d)
+
+        self.cycle['image'] = image
+        self.cycle['domain'] = dom
+                
+        
+    def act_on(self, cyc):
+
+        dom = list(set(self.cycle['domain']+cyc.cycle['domain']))
+        dom.sort()
+
+        cyc.expand_domain(dom)
+        self.expand_domain(dom)
+
+        cyc1 = cyc.cycle
+        cyc2 = self.cycle
+
+        img = [cyc2['image'][cyc2['domain'].index(el)] for el in cyc1['image']]
+
+        rtn_cyc = Cycle()
+        rtn_cyc.set_cycle({'domain': dom, 'image': img})
+        rtn_cyc.remove_single_cycles()
+
+        return rtn_cyc
+
         
         
     def reverse(self):
@@ -113,7 +174,7 @@ class Cycle():
         return self
         
         
-    def act_on(self, cyc):
+    def act_on_depricated(self, cyc):
 
         #a=self o b= cyc
         a = self.cycle.copy()
@@ -171,7 +232,7 @@ class Cycle():
     
     
     
-    def remove_single_cycles(self):
+    def remove_single_cycles(self, dic = None):
         
         active_cycle = self
         if len(self.cycle['domain']) > 0:
@@ -251,7 +312,7 @@ class Cycle():
     
     def as_str(self):
         
-        op = self.cycle
+        op = self.remove_single_cycles().cycle
         left = op.get('image',[])
         right = op.get('domain', [])
 
